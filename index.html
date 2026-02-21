@@ -346,6 +346,41 @@
 
         #serial-monitor::placeholder { color: var(--text-3); }
 
+        .cmd-input-row {
+            display: flex;
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .cmd-input-row input {
+            flex: 1;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            background: var(--bg);
+            color: var(--text);
+            border: none;
+            padding: 6px 10px;
+            outline: none;
+        }
+
+        .cmd-input-row input::placeholder { color: var(--text-3); }
+        .cmd-input-row input:disabled { opacity: 0.4; }
+
+        .cmd-input-row button {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            padding: 6px 14px;
+            background: var(--surface);
+            color: var(--text-2);
+            border: none;
+            border-left: 1px solid var(--border);
+            border-radius: 0;
+            cursor: pointer;
+        }
+
+        .cmd-input-row button:hover { background: var(--surface-2); color: var(--text); }
+        .cmd-input-row button:disabled { opacity: 0.3; pointer-events: none; }
+
         /* ===== STATUS BAR ===== */
         .statusbar {
             display: flex;
@@ -381,6 +416,24 @@
         ::-webkit-scrollbar-track { background: var(--surface); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 0; }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+        .tb-btn.recording {
+            background: var(--red);
+            border-color: var(--red);
+            color: #fff;
+            animation: rec-blink 1s ease-in-out infinite;
+        }
+
+        @keyframes rec-blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .rec-info {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--red) !important;
+            font-weight: 500;
+        }
 
         @media (max-width: 700px) {
             .toolbar { flex-wrap: wrap; }
@@ -451,6 +504,23 @@
 
     <div class="sep"></div>
 
+    <!-- Record -->
+    <button class="tb-btn" id="btn-rec">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="var(--red)"/></svg>
+        Rec
+    </button>
+    <button class="tb-btn" id="btn-rec-stop" disabled>
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+        Stop
+    </button>
+    <button class="tb-btn" id="btn-rec-save" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Save CSV
+    </button>
+    <span class="tb-label rec-info" id="rec-info" style="display:none;"></span>
+
+    <div class="sep"></div>
+
     <span class="tb-label">Points:</span>
     <input type="number" class="tb-input" id="max-points" value="500" min="50" max="10000" step="50">
 
@@ -478,12 +548,17 @@
         <button id="btn-clear-monitor">Clear</button>
     </div>
     <textarea id="serial-monitor" readonly placeholder=">> Waiting for serial data..."></textarea>
+    <div class="cmd-input-row">
+        <input type="text" id="serial-input" placeholder="Type message to send..." disabled>
+        <button id="btn-send" disabled>Send</button>
+    </div>
 </div>
 
 <!-- STATUS BAR -->
 <div class="statusbar">
     <div class="sb-item">Samples: <span id="stat-samples">0</span></div>
     <div class="sb-item">Channels: <span id="stat-channels">0</span></div>
+    <div class="sb-item" id="sb-rec" style="display:none; color:var(--red);">REC</div>
     <div class="sb-item" id="sb-theme">Theme: MATLAB</div>
 </div>
 
@@ -576,11 +651,15 @@
     let buf = '', idx = 0, maxPts = 500;
     let chData = [], xData = [], chCount = 0;
     let tStamps = [], spsTimer = null;
+    let isRecording = false, recData = [], recStartTime = null, recTimer = null;
 
     const $ = id => document.getElementById(id);
     const btnPort = $('btn-port'), btnConn = $('btn-connect'), btnDisc = $('btn-disconnect');
     const btnRun = $('btn-run'), btnPause = $('btn-pause'), btnClear = $('btn-clear');
+    const btnRec = $('btn-rec'), btnRecStop = $('btn-rec-stop'), btnRecSave = $('btn-rec-save');
+    const recInfo = $('rec-info'), sbRec = $('sb-rec');
     const btnClearMon = $('btn-clear-monitor');
+    const serialInput = $('serial-input'), btnSend = $('btn-send');
     const baudSel = $('baud-rate'), sDot = $('status-dot'), sTxt = $('status-text');
     const mon = $('serial-monitor'), ptsIn = $('max-points');
     const chartDiv = $('chart'), chStrip = $('ch-strip'), noData = $('no-data-label');
@@ -708,6 +787,12 @@
             idx = 0;
         }
 
+        // Record data
+        if (isRecording) {
+            const elapsed = ((performance.now() - recStartTime) / 1000).toFixed(3);
+            recData.push({ time: elapsed, values: [...vals] });
+        }
+
         idx++;
         tStamps.push(performance.now());
         maxPts = parseInt(ptsIn.value) || 500;
@@ -768,6 +853,7 @@
             btnConn.disabled = true; btnDisc.disabled = false;
             btnPort.disabled = true; baudSel.disabled = true;
             btnPause.disabled = false; btnRun.disabled = true;
+            serialInput.disabled = false; btnSend.disabled = false;
             startSps(); readLoop();
         } catch (e) { console.error(e); sTxt.textContent = 'Error'; }
     });
@@ -782,6 +868,7 @@
             btnConn.disabled = false; btnDisc.disabled = true;
             btnPort.disabled = false; baudSel.disabled = false;
             btnPause.disabled = true; btnRun.disabled = true;
+            serialInput.disabled = true; btnSend.disabled = true;
         } catch (e) { console.error(e); }
     });
 
@@ -806,6 +893,92 @@
     ptsIn.addEventListener('change', () => {
         maxPts = Math.max(50, Math.min(10000, parseInt(ptsIn.value) || 500));
         ptsIn.value = maxPts;
+    });
+
+    // -- Send data --
+    async function sendSerial(text) {
+        if (!port || !port.writable) return;
+        const encoder = new TextEncoder();
+        const writer = port.writable.getWriter();
+        await writer.write(encoder.encode(text + '\n'));
+        writer.releaseLock();
+        mon.value += '<< ' + text + '\n';
+        mon.scrollTop = mon.scrollHeight;
+    }
+
+    btnSend.addEventListener('click', () => {
+        const text = serialInput.value.trim();
+        if (text) { sendSerial(text); serialInput.value = ''; }
+    });
+
+    serialInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const text = serialInput.value.trim();
+            if (text) { sendSerial(text); serialInput.value = ''; }
+        }
+    });
+
+    // -- Recording --
+    function formatRecTime(ms) {
+        const s = Math.floor(ms / 1000);
+        const m = Math.floor(s / 60);
+        const h = Math.floor(m / 60);
+        const ss = String(s % 60).padStart(2, '0');
+        const mm = String(m % 60).padStart(2, '0');
+        return h > 0 ? h + ':' + mm + ':' + ss : mm + ':' + ss;
+    }
+
+    btnRec.addEventListener('click', () => {
+        isRecording = true;
+        recData = [];
+        recStartTime = performance.now();
+        btnRec.disabled = true;
+        btnRec.classList.add('recording');
+        btnRecStop.disabled = false;
+        btnRecSave.disabled = true;
+        sbRec.style.display = '';
+        recInfo.style.display = '';
+        recInfo.textContent = '00:00 | 0 rows';
+        recTimer = setInterval(() => {
+            const elapsed = performance.now() - recStartTime;
+            recInfo.textContent = formatRecTime(elapsed) + ' | ' + recData.length + ' rows';
+        }, 500);
+    });
+
+    btnRecStop.addEventListener('click', () => {
+        isRecording = false;
+        clearInterval(recTimer);
+        btnRec.disabled = false;
+        btnRec.classList.remove('recording');
+        btnRecStop.disabled = true;
+        btnRecSave.disabled = recData.length === 0;
+        sbRec.style.display = 'none';
+        const elapsed = performance.now() - recStartTime;
+        recInfo.textContent = formatRecTime(elapsed) + ' | ' + recData.length + ' rows (stopped)';
+    });
+
+    btnRecSave.addEventListener('click', () => {
+        if (recData.length === 0) return;
+        const numCh = recData[0].values.length;
+        let csv = 'Time(s),' + Array.from({ length: numCh }, (_, i) => 'CH' + (i + 1)).join(',') + '\n';
+        for (const row of recData) {
+            csv += row.time;
+            for (let i = 0; i < numCh; i++) csv += ',' + (row.values[i] ?? '');
+            csv += '\n';
+        }
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        const now = new Date();
+        const ts = now.getFullYear() +
+            String(now.getMonth() + 1).padStart(2, '0') +
+            String(now.getDate()).padStart(2, '0') + '_' +
+            String(now.getHours()).padStart(2, '0') +
+            String(now.getMinutes()).padStart(2, '0') +
+            String(now.getSeconds()).padStart(2, '0');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'recording_' + ts + '.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
     });
 
     // File menu

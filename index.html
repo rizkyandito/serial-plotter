@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serial Plotter</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+        /* ===== THEMES ===== */
+        [data-theme="matlab"] {
+            --bg: #ffffff; --surface: #f5f5f5; --surface-2: #ebebeb;
+            --border: #d0d0d0; --text: #1a1a1a; --text-2: #555555; --text-3: #999999;
+            --accent: #0072bd; --green: #2ca02c; --red: #d62728;
+            --plot-bg: #ffffff; --grid: #e6e6e6; --zeroline: #cccccc;
+            --axis-text: #555555; --monitor-bg: #f8f8f8; --monitor-text: #1a1a1a;
+            --hover-bg: #ffffff; --hover-border: #cccccc; --hover-text: #1a1a1a;
+            --ch1: #0072bd; --ch2: #d95319; --ch3: #edb120; --ch4: #7e2f8e; --ch5: #77ac30; --ch6: #4dbeee;
+        }
+        [data-theme="dark"] {
+            --bg: #1e1e1e; --surface: #2d2d2d; --surface-2: #383838;
+            --border: #4a4a4a; --text: #d4d4d4; --text-2: #9a9a9a; --text-3: #666666;
+            --accent: #569cd6; --green: #6a9955; --red: #f44747;
+            --plot-bg: #1e1e1e; --grid: #2d2d2d; --zeroline: #4a4a4a;
+            --axis-text: #9a9a9a; --monitor-bg: #1e1e1e; --monitor-text: #6a9955;
+            --hover-bg: #2d2d2d; --hover-border: #4a4a4a; --hover-text: #d4d4d4;
+            --ch1: #569cd6; --ch2: #ce9178; --ch3: #dcdcaa; --ch4: #c586c0; --ch5: #6a9955; --ch6: #4ec9b0;
+        }
+        [data-theme="monokai"] {
+            --bg: #272822; --surface: #3e3d32; --surface-2: #49483e;
+            --border: #5b5a4f; --text: #f8f8f2; --text-2: #a6a68a; --text-3: #75715e;
+            --accent: #66d9ef; --green: #a6e22e; --red: #f92672;
+            --plot-bg: #272822; --grid: #3e3d32; --zeroline: #5b5a4f;
+            --axis-text: #a6a68a; --monitor-bg: #272822; --monitor-text: #a6e22e;
+            --hover-bg: #3e3d32; --hover-border: #5b5a4f; --hover-text: #f8f8f2;
+            --ch1: #66d9ef; --ch2: #f92672; --ch3: #a6e22e; --ch4: #e6db74; --ch5: #fd971f; --ch6: #ae81ff;
+        }
+        [data-theme="nord"] {
+            --bg: #2e3440; --surface: #3b4252; --surface-2: #434c5e;
+            --border: #4c566a; --text: #eceff4; --text-2: #d8dee9; --text-3: #7b88a1;
+            --accent: #88c0d0; --green: #a3be8c; --red: #bf616a;
+            --plot-bg: #2e3440; --grid: #3b4252; --zeroline: #4c566a;
+            --axis-text: #7b88a1; --monitor-bg: #2e3440; --monitor-text: #a3be8c;
+            --hover-bg: #3b4252; --hover-border: #4c566a; --hover-text: #eceff4;
+            --ch1: #88c0d0; --ch2: #bf616a; --ch3: #ebcb8b; --ch4: #b48ead; --ch5: #a3be8c; --ch6: #81a1c1;
+        }
+        [data-theme="solarized"] {
+            --bg: #fdf6e3; --surface: #eee8d5; --surface-2: #e4ddc8;
+            --border: #d3cbb7; --text: #586e75; --text-2: #657b83; --text-3: #93a1a1;
+            --accent: #268bd2; --green: #859900; --red: #dc322f;
+            --plot-bg: #fdf6e3; --grid: #eee8d5; --zeroline: #d3cbb7;
+            --axis-text: #657b83; --monitor-bg: #fdf6e3; --monitor-text: #586e75;
+            --hover-bg: #fdf6e3; --hover-border: #d3cbb7; --hover-text: #586e75;
+            --ch1: #268bd2; --ch2: #dc322f; --ch3: #b58900; --ch4: #6c71c4; --ch5: #859900; --ch6: #2aa198;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        /* ===== MENUBAR (MATLAB-style) ===== */
+        .menubar {
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            height: 30px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            gap: 2px;
+        }
+
+        .menu-item {
+            font-size: 12px;
+            color: var(--text);
+            padding: 4px 10px;
+            cursor: default;
+            border-radius: 3px;
+            user-select: none;
+            position: relative;
+        }
+
+        .menu-item:hover { background: var(--surface-2); }
+
+        .menu-item .dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            min-width: 160px;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 4px 0;
+        }
+
+        .menu-item.open .dropdown { display: block; }
+
+        .dropdown-item {
+            font-size: 12px;
+            color: var(--text);
+            padding: 6px 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .dropdown-item:hover { background: var(--accent); color: #fff; }
+        .dropdown-item .check { font-size: 11px; }
+        .dropdown-sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+        .menubar-right {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .menubar-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-3);
+            padding: 2px 6px;
+            background: var(--surface-2);
+            border-radius: 3px;
+        }
+
+        /* ===== MATLAB TOOLBAR ===== */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .toolbar .sep {
+            width: 1px;
+            height: 22px;
+            background: var(--border);
+            margin: 0 3px;
+            flex-shrink: 0;
+        }
+
+        .tb-btn {
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            font-weight: 500;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 4px 10px;
+            cursor: pointer;
+            background: var(--bg);
+            color: var(--text-2);
+            transition: all 0.12s;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .tb-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--text-3); }
+        .tb-btn:disabled { opacity: 0.3; pointer-events: none; }
+
+        .tb-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+        .tb-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .tb-select {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            background: var(--bg);
+            color: var(--text-2);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 4px 24px 4px 8px;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 6px center;
+        }
+
+        .tb-select:hover { border-color: var(--text-3); }
+        .tb-select:disabled { opacity: 0.35; }
+
+        .tb-input {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            width: 52px;
+            background: var(--bg);
+            color: var(--text-2);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 4px 6px;
+            outline: none;
+        }
+
+        .tb-input:focus { border-color: var(--accent); }
+
+        .tb-label {
+            font-size: 10px;
+            color: var(--text-3);
+            white-space: nowrap;
+        }
+
+        .status-group {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--text-3);
+            transition: background 0.3s;
+        }
+
+        .status-dot.on { background: var(--green); box-shadow: 0 0 5px var(--green); }
+
+        .status-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-3);
+        }
+
+        .status-text.on { color: var(--green); }
+
+        /* ===== CHANNEL STRIP ===== */
+        .ch-strip {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 3px 10px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            min-height: 26px;
+            flex-shrink: 0;
+            overflow-x: auto;
+        }
+
+        .ch-strip::-webkit-scrollbar { display: none; }
+
+        .ch-tag {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            white-space: nowrap;
+            padding: 2px 6px;
+            border-radius: 2px;
+            background: var(--surface-2);
+        }
+
+        .ch-line { width: 14px; height: 2px; border-radius: 1px; }
+        .ch-name { color: var(--text-2); }
+        .ch-val { color: var(--text); font-weight: 500; }
+
+        .ch-strip .no-data {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-3);
+        }
+
+        /* ===== CHART ===== */
+        .chart-area {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            border-bottom: 1px solid var(--border);
+        }
+
+        #chart { width: 100%; height: 100%; }
+
+        /* ===== COMMAND WINDOW (Serial Monitor) ===== */
+        .cmd-window {
+            height: 150px;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .cmd-header {
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            height: 24px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .cmd-header span {
+            font-size: 11px;
+            color: var(--text-2);
+            font-weight: 500;
+        }
+
+        .cmd-header button {
+            margin-left: auto;
+            font-family: 'Inter', sans-serif;
+            font-size: 10px;
+            padding: 1px 8px;
+            background: var(--bg);
+            color: var(--text-3);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .cmd-header button:hover { color: var(--text); }
+
+        #serial-monitor {
+            flex: 1;
+            width: 100%;
+            background: var(--monitor-bg);
+            color: var(--monitor-text);
+            border: none;
+            padding: 6px 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            line-height: 1.5;
+            resize: none;
+            outline: none;
+        }
+
+        #serial-monitor::placeholder { color: var(--text-3); }
+
+        /* ===== STATUS BAR ===== */
+        .statusbar {
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            height: 22px;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+            gap: 16px;
+        }
+
+        .sb-item {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-3);
+        }
+
+        .sb-item span { color: var(--text-2); }
+
+        /* ===== NOT SUPPORTED ===== */
+        .not-supported {
+            display: none;
+            text-align: center;
+            padding: 100px 24px;
+        }
+
+        .not-supported h2 { font-size: 16px; color: var(--red); margin-bottom: 8px; }
+        .not-supported p { color: var(--text-2); font-size: 13px; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--surface); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 0; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+        @media (max-width: 700px) {
+            .toolbar { flex-wrap: wrap; }
+            .menubar { display: none; }
+        }
+    </style>
+</head>
+<body data-theme="matlab">
+
+<!-- MENUBAR -->
+<div class="menubar">
+    <div class="menu-item" id="menu-file">File
+        <div class="dropdown">
+            <div class="dropdown-item" id="mi-export-csv">Export CSV</div>
+            <div class="dropdown-sep"></div>
+            <div class="dropdown-item" id="mi-clear-all">Clear All</div>
+        </div>
+    </div>
+    <div class="menu-item" id="menu-view">View
+        <div class="dropdown" id="theme-dropdown"></div>
+    </div>
+    <div class="menubar-right">
+        <div class="menubar-badge" id="sps-badge">0 sps</div>
+    </div>
+</div>
+
+<!-- TOOLBAR -->
+<div class="toolbar" id="app-toolbar">
+    <!-- Connection -->
+    <button class="tb-btn" id="btn-port">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><circle cx="8" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="16" cy="12" r="1.5" fill="currentColor"/></svg>
+        Port
+    </button>
+    <select class="tb-select" id="baud-rate">
+        <option value="9600">9600</option>
+        <option value="19200">19200</option>
+        <option value="38400">38400</option>
+        <option value="57600">57600</option>
+        <option value="115200" selected>115200</option>
+        <option value="230400">230400</option>
+        <option value="460800">460800</option>
+        <option value="921600">921600</option>
+    </select>
+    <button class="tb-btn active" id="btn-connect" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Connect
+    </button>
+    <button class="tb-btn" id="btn-disconnect" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        Disconnect
+    </button>
+
+    <div class="sep"></div>
+
+    <!-- Plot controls -->
+    <button class="tb-btn" id="btn-run" disabled>
+        <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+        Run
+    </button>
+    <button class="tb-btn" id="btn-pause" disabled>
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="4" height="16" rx="1"/><rect x="15" y="4" width="4" height="16" rx="1"/></svg>
+        Pause
+    </button>
+    <button class="tb-btn" id="btn-clear">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M5 6v14a2 2 0 002 2h10a2 2 0 002-2V6"/></svg>
+        Clear
+    </button>
+
+    <div class="sep"></div>
+
+    <span class="tb-label">Points:</span>
+    <input type="number" class="tb-input" id="max-points" value="500" min="50" max="10000" step="50">
+
+    <!-- Status -->
+    <div class="status-group">
+        <div class="status-dot" id="status-dot"></div>
+        <span class="status-text" id="status-text">Offline</span>
+    </div>
+</div>
+
+<!-- CHANNEL STRIP -->
+<div class="ch-strip" id="ch-strip">
+    <span class="no-data" id="no-data-label">No data</span>
+</div>
+
+<!-- CHART -->
+<div class="chart-area">
+    <div id="chart"></div>
+</div>
+
+<!-- COMMAND WINDOW -->
+<div class="cmd-window">
+    <div class="cmd-header">
+        <span>Command Window</span>
+        <button id="btn-clear-monitor">Clear</button>
+    </div>
+    <textarea id="serial-monitor" readonly placeholder=">> Waiting for serial data..."></textarea>
+</div>
+
+<!-- STATUS BAR -->
+<div class="statusbar">
+    <div class="sb-item">Samples: <span id="stat-samples">0</span></div>
+    <div class="sb-item">Channels: <span id="stat-channels">0</span></div>
+    <div class="sb-item" id="sb-theme">Theme: MATLAB</div>
+</div>
+
+<!-- NOT SUPPORTED -->
+<div id="not-supported" class="not-supported">
+    <h2>Browser Not Supported</h2>
+    <p>Web Serial API requires Chrome or Edge.</p>
+</div>
+
+<script>
+(function() {
+    // ===== THEMES =====
+    const THEMES = {
+        matlab:     { label: 'MATLAB',           colors: () => ['var(--ch1)','var(--ch2)','var(--ch3)','var(--ch4)','var(--ch5)','var(--ch6)'] },
+        dark:       { label: 'Dark',             colors: () => ['var(--ch1)','var(--ch2)','var(--ch3)','var(--ch4)','var(--ch5)','var(--ch6)'] },
+        monokai:    { label: 'Monokai',          colors: () => ['var(--ch1)','var(--ch2)','var(--ch3)','var(--ch4)','var(--ch5)','var(--ch6)'] },
+        nord:       { label: 'Nord',             colors: () => ['var(--ch1)','var(--ch2)','var(--ch3)','var(--ch4)','var(--ch5)','var(--ch6)'] },
+        solarized:  { label: 'Solarized Light',  colors: () => ['var(--ch1)','var(--ch2)','var(--ch3)','var(--ch4)','var(--ch5)','var(--ch6)'] },
+    };
+
+    // Resolve CSS var to actual color
+    function resolveColor(v) {
+        const el = document.createElement('div');
+        el.style.color = v;
+        document.body.appendChild(el);
+        const c = getComputedStyle(el).color;
+        el.remove();
+        return c;
+    }
+
+    function getChColors() {
+        return [1,2,3,4,5,6].map(i => resolveColor('var(--ch' + i + ')'));
+    }
+
+    let currentTheme = 'matlab';
+
+    function applyTheme(key) {
+        currentTheme = key;
+        document.body.setAttribute('data-theme', key);
+        document.getElementById('sb-theme').textContent = 'Theme: ' + THEMES[key].label;
+        localStorage.setItem('serial-plotter-theme', key);
+        rebuildChart();
+        buildThemeMenu();
+    }
+
+    function buildThemeMenu() {
+        const dd = document.getElementById('theme-dropdown');
+        dd.innerHTML = '';
+        for (const [k, v] of Object.entries(THEMES)) {
+            const item = document.createElement('div');
+            item.className = 'dropdown-item';
+            item.innerHTML = v.label + (k === currentTheme ? '<span class="check">&#10003;</span>' : '');
+            item.addEventListener('click', (e) => { e.stopPropagation(); applyTheme(k); closeMenus(); });
+            dd.appendChild(item);
+        }
+    }
+
+    // ===== MENU LOGIC =====
+    function closeMenus() {
+        document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('open'));
+    }
+
+    document.querySelectorAll('.menu-item').forEach(mi => {
+        mi.addEventListener('click', (e) => {
+            const wasOpen = mi.classList.contains('open');
+            closeMenus();
+            if (!wasOpen) mi.classList.add('open');
+        });
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.menu-item')) closeMenus();
+    });
+
+    // ===== SERIAL PLOTTER =====
+    if (!('serial' in navigator)) {
+        document.getElementById('not-supported').style.display = 'block';
+        document.getElementById('app-toolbar').style.display = 'none';
+        document.querySelector('.menubar').style.display = 'none';
+        document.querySelector('.ch-strip').style.display = 'none';
+        document.querySelector('.chart-area').style.display = 'none';
+        document.querySelector('.cmd-window').style.display = 'none';
+        document.querySelector('.statusbar').style.display = 'none';
+        return;
+    }
+
+    const MAX_CH = 6;
+    let port = null, reader = null;
+    let connected = false, plotting = false, reading = false;
+    let buf = '', idx = 0, maxPts = 500;
+    let chData = [], xData = [], chCount = 0;
+    let tStamps = [], spsTimer = null;
+
+    const $ = id => document.getElementById(id);
+    const btnPort = $('btn-port'), btnConn = $('btn-connect'), btnDisc = $('btn-disconnect');
+    const btnRun = $('btn-run'), btnPause = $('btn-pause'), btnClear = $('btn-clear');
+    const btnClearMon = $('btn-clear-monitor');
+    const baudSel = $('baud-rate'), sDot = $('status-dot'), sTxt = $('status-text');
+    const mon = $('serial-monitor'), ptsIn = $('max-points');
+    const chartDiv = $('chart'), chStrip = $('ch-strip'), noData = $('no-data-label');
+    const spsBadge = $('sps-badge');
+    const statSamples = $('stat-samples'), statChannels = $('stat-channels');
+
+    function getLayout() {
+        const s = getComputedStyle(document.body);
+        return {
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: s.getPropertyValue('--plot-bg').trim(),
+            font: { color: s.getPropertyValue('--axis-text').trim(), size: 11, family: 'JetBrains Mono, monospace' },
+            margin: { t: 10, r: 14, b: 36, l: 52 },
+            xaxis: {
+                title: { text: 'Sample', font: { size: 11 } },
+                gridcolor: s.getPropertyValue('--grid').trim(),
+                zerolinecolor: s.getPropertyValue('--zeroline').trim(),
+                linecolor: s.getPropertyValue('--zeroline').trim(),
+                mirror: true, showline: true,
+                tickfont: { size: 10 }
+            },
+            yaxis: {
+                title: { text: 'Amplitude', font: { size: 11 } },
+                gridcolor: s.getPropertyValue('--grid').trim(),
+                zerolinecolor: s.getPropertyValue('--zeroline').trim(),
+                linecolor: s.getPropertyValue('--zeroline').trim(),
+                mirror: true, showline: true,
+                tickfont: { size: 10 }
+            },
+            showlegend: true,
+            legend: {
+                bgcolor: 'rgba(0,0,0,0)',
+                font: { size: 10, color: s.getPropertyValue('--text-2').trim() },
+                orientation: 'h', x: 0.5, xanchor: 'center', y: 1.02
+            },
+            hovermode: 'x unified',
+            hoverlabel: {
+                bgcolor: s.getPropertyValue('--hover-bg').trim(),
+                bordercolor: s.getPropertyValue('--hover-border').trim(),
+                font: { family: 'JetBrains Mono', size: 11, color: s.getPropertyValue('--hover-text').trim() }
+            }
+        };
+    }
+
+    function rebuildChart() {
+        const colors = getChColors();
+        if (chCount === 0) {
+            Plotly.react(chartDiv, [], getLayout(), { responsive: true, displayModeBar: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d','select2d'] });
+        } else {
+            const traces = [];
+            for (let i = 0; i < chCount; i++) {
+                traces.push({
+                    x: [...xData[i]], y: [...chData[i]],
+                    type: 'scattergl', mode: 'lines',
+                    name: 'CH' + (i + 1),
+                    line: { color: colors[i], width: 1.5 },
+                    hovertemplate: 'CH' + (i + 1) + ': %{y:.2f}<extra></extra>'
+                });
+            }
+            Plotly.react(chartDiv, traces, getLayout(), { responsive: true, displayModeBar: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d','select2d'] });
+        }
+    }
+
+    function initChart() { rebuildChart(); }
+
+    function setupTraces(n) {
+        chCount = Math.min(n, MAX_CH);
+        chData = []; xData = [];
+        for (let i = 0; i < chCount; i++) { chData.push([]); xData.push([]); }
+        rebuildChart();
+        statChannels.textContent = chCount;
+        updateChStrip();
+    }
+
+    function updateChStrip() {
+        chStrip.querySelectorAll('.ch-tag').forEach(el => el.remove());
+        noData.style.display = chCount === 0 ? '' : 'none';
+        const colors = getChColors();
+        for (let i = 0; i < chCount; i++) {
+            const v = chData[i].length ? chData[i][chData[i].length - 1] : null;
+            const tag = document.createElement('div');
+            tag.className = 'ch-tag';
+            tag.innerHTML =
+                '<div class="ch-line" style="background:' + colors[i] + '"></div>' +
+                '<span class="ch-name">CH' + (i + 1) + '</span>' +
+                '<span class="ch-val">' + (v !== null ? v.toFixed(2) : '--') + '</span>';
+            chStrip.insertBefore(tag, noData);
+        }
+    }
+
+    function startSps() {
+        spsTimer = setInterval(() => {
+            const now = performance.now();
+            tStamps = tStamps.filter(t => now - t < 1000);
+            spsBadge.textContent = tStamps.length + ' sps';
+        }, 500);
+    }
+
+    function stopSps() {
+        clearInterval(spsTimer);
+        spsBadge.textContent = '0 sps';
+        tStamps = [];
+    }
+
+    function processLine(line) {
+        line = line.trim();
+        if (!line) return;
+
+        mon.value += '>> ' + line + '\n';
+        if (mon.value.length > 50000) mon.value = mon.value.slice(-25000);
+        mon.scrollTop = mon.scrollHeight;
+
+        if (!plotting) return;
+
+        const vals = [];
+        for (const p of line.split(',')) {
+            if (vals.length >= MAX_CH) break;
+            const v = parseFloat(p.trim());
+            if (!isNaN(v)) vals.push(v);
+        }
+        if (!vals.length) return;
+
+        if (chCount === 0 || vals.length !== chCount) {
+            setupTraces(vals.length);
+            idx = 0;
+        }
+
+        idx++;
+        tStamps.push(performance.now());
+        maxPts = parseInt(ptsIn.value) || 500;
+
+        const colors = getChColors();
+        const xu = [], yu = [];
+        for (let i = 0; i < chCount; i++) {
+            const v = vals[i] ?? 0;
+            chData[i].push(v); xData[i].push(idx);
+            if (chData[i].length > maxPts) { chData[i].shift(); xData[i].shift(); }
+            xu.push([idx]); yu.push([v]);
+        }
+
+        Plotly.extendTraces(chartDiv, { x: xu, y: yu }, Array.from({ length: chCount }, (_, i) => i), maxPts);
+        Plotly.relayout(chartDiv, { 'xaxis.range': [Math.max(0, idx - maxPts), idx + 10] });
+        statSamples.textContent = idx;
+        updateChStrip();
+    }
+
+    async function readLoop() {
+        const dec = new TextDecoderStream();
+        port.readable.pipeTo(dec.writable);
+        reader = dec.readable.getReader();
+        reading = true;
+        try {
+            while (reading) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                if (value) {
+                    buf += value;
+                    const lines = buf.split('\n');
+                    buf = lines.pop();
+                    for (const l of lines) processLine(l);
+                }
+            }
+        } catch (e) {
+            if (reading) console.error(e);
+        } finally {
+            reader.releaseLock();
+        }
+    }
+
+    // -- Events --
+    btnPort.addEventListener('click', async () => {
+        try {
+            port = await navigator.serial.requestPort();
+            btnConn.disabled = false;
+            sTxt.textContent = 'Ready';
+        } catch (e) { if (e.name !== 'NotFoundError') console.error(e); }
+    });
+
+    btnConn.addEventListener('click', async () => {
+        if (!port) return;
+        try {
+            await port.open({ baudRate: parseInt(baudSel.value) });
+            connected = true; plotting = true; buf = '';
+            sDot.classList.add('on'); sTxt.textContent = 'Online'; sTxt.classList.add('on');
+            btnConn.disabled = true; btnDisc.disabled = false;
+            btnPort.disabled = true; baudSel.disabled = true;
+            btnPause.disabled = false; btnRun.disabled = true;
+            startSps(); readLoop();
+        } catch (e) { console.error(e); sTxt.textContent = 'Error'; }
+    });
+
+    btnDisc.addEventListener('click', async () => {
+        try {
+            reading = false; plotting = false; stopSps();
+            if (reader) await reader.cancel();
+            if (port) await port.close();
+            connected = false;
+            sDot.classList.remove('on'); sTxt.textContent = 'Offline'; sTxt.classList.remove('on');
+            btnConn.disabled = false; btnDisc.disabled = true;
+            btnPort.disabled = false; baudSel.disabled = false;
+            btnPause.disabled = true; btnRun.disabled = true;
+        } catch (e) { console.error(e); }
+    });
+
+    btnPause.addEventListener('click', () => {
+        plotting = false; btnPause.disabled = true; btnRun.disabled = false;
+    });
+
+    btnRun.addEventListener('click', () => {
+        plotting = true; btnPause.disabled = false; btnRun.disabled = true;
+    });
+
+    btnClear.addEventListener('click', () => {
+        chData = []; xData = []; chCount = 0; idx = 0; tStamps = [];
+        statSamples.textContent = '0'; statChannels.textContent = '0';
+        rebuildChart();
+        chStrip.querySelectorAll('.ch-tag').forEach(el => el.remove());
+        noData.style.display = '';
+    });
+
+    btnClearMon.addEventListener('click', () => { mon.value = ''; });
+
+    ptsIn.addEventListener('change', () => {
+        maxPts = Math.max(50, Math.min(10000, parseInt(ptsIn.value) || 500));
+        ptsIn.value = maxPts;
+    });
+
+    // File menu
+    $('mi-export-csv').addEventListener('click', () => {
+        if (chCount === 0) return;
+        let csv = 'Sample,' + Array.from({ length: chCount }, (_, i) => 'CH' + (i + 1)).join(',') + '\n';
+        const len = chData[0].length;
+        for (let j = 0; j < len; j++) {
+            csv += xData[0][j];
+            for (let i = 0; i < chCount; i++) csv += ',' + chData[i][j];
+            csv += '\n';
+        }
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'serial_data.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        closeMenus();
+    });
+
+    $('mi-clear-all').addEventListener('click', () => {
+        btnClear.click();
+        mon.value = '';
+        closeMenus();
+    });
+
+    // Init
+    const saved = localStorage.getItem('serial-plotter-theme');
+    if (saved && THEMES[saved]) currentTheme = saved;
+    document.body.setAttribute('data-theme', currentTheme);
+    $('sb-theme').textContent = 'Theme: ' + THEMES[currentTheme].label;
+
+    buildThemeMenu();
+    initChart();
+    window.addEventListener('resize', () => Plotly.Plots.resize(chartDiv));
+})();
+</script>
+
+</body>
+</html>
